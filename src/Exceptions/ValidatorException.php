@@ -13,17 +13,7 @@ class ValidatorException extends \Exception
 
     public static final function format(mixed $schema)
     {
-        if (!is_array($schema))
-            return "$schema";
-        $textSchemaBase = array_map(function ($key, $value) {
-            if (is_array($value))
-                $value = self::format($value);
-            if (is_numeric($key))
-                return "$value";
-            if (is_object($value))
-                return "{$key} => (object)";
-            return "{$key} => $value";
-        }, array_keys($schema), $schema);
-        return "[ " . implode(", ", $textSchemaBase) . " ]";
+        return str_replace(["array ","\n", "  ", ",)"],["","", " ", " )"], var_export($schema, true));
+        
     }
 }

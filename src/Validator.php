@@ -14,7 +14,7 @@ use Pkit\Validator\Exceptions\Validation\NonArrayValueException;
 use Pkit\Validator\Exceptions\Validation\NotHaveKeyException;
 use Pkit\Validator\Exceptions\ValidationException;
 
-class Validator
+final class Validator
 {
     public function __construct(private mixed $schema, private bool $isThrowable = false)
     {
@@ -38,24 +38,21 @@ class Validator
             );
         }
 
-        $is_numeric = null;
+        $is_int = null;
         $is_especial_key = null;
-        array_map(function ($key) use (&$is_numeric, &$is_especial_key, $schema, $level) {
+        array_map(function ($key) use (&$is_int, &$is_especial_key, $schema, $level) {
             if (is_string($key)) {
                 if (is_null($is_especial_key))
                     $is_especial_key = substr($key, 0, 1) == "@";
-                else if ($is_especial_key !== (substr($key, 0, 1) == "@") || $is_numeric) {
+                else if ($is_especial_key !== (substr($key, 0, 1) == "@") || $is_int) {
                     throw new KeysSchemaInvalidException(
                         $schema,
                         $level,
                     );
                 }
-            }
-
-            if (is_null($is_numeric)) {
-                $is_numeric = is_numeric($key);
-            }
-            else if ($is_numeric !== is_numeric($key) || $is_numeric && $is_especial_key) {
+            } else if (is_null($is_int)) {
+                $is_int = is_int($key);
+            } else if ($is_int !== is_int($key) || $is_int && $is_especial_key) {
                 throw new KeysSchemaInvalidException(
                     $schema,
                     $level,
@@ -65,7 +62,7 @@ class Validator
 
         if ($is_especial_key)
             return $this->validateEspecialKeys($test, $level, $schema);
-        if ($is_numeric)
+        if ($is_int)
             return $this->validateOnlyValues($test, $level, $schema);
         return $this->validateKeysAndValues($test, $level, $schema);
     }
@@ -105,15 +102,14 @@ class Validator
                         return false;
 
                 foreach ($test as $key => $value) {
-                    if (!is_numeric($key)) {
+                    if (!is_integer($key)) {
                         return false;
                     }
 
                     if (is_array($subSchema)) {
                         if (!$this->handleValidate($value, [...$level, $key], $subSchema))
                             return false;
-                    }
-                    else {
+                    } else {
                         if (!$this->validateValueOrType($value, [...$level, $key], $subSchema))
                             return false;
                     }
@@ -140,8 +136,7 @@ class Validator
 
                 if ($this->validateValueOrType($test, $level, $subSchema))
                     return true;
-            }
-            catch (ValidationException $th) {
+            } catch (ValidationException $th) {
                 if ($this->isThrowable)
                     $errors[] = $th->getMessage();
                 $result = false;
@@ -212,13 +207,11 @@ class Validator
         if (!is_string($subSchema)) {
             if ($subSchema === $test)
                 return true;
-        }
-        else {
+        } else {
             if (substr($subSchema, 0, 1) == ":") {
                 if (substr($subSchema, 1) == $test)
                     return true;
-            }
-            else {
+            } else {
                 if ($this->validType($subSchema, $level, $test))
                     return true;
             }
@@ -241,11 +234,9 @@ class Validator
         foreach ($types as $type) {
             try {
                 $resultValidation = call_user_func("is_" . $type, $value);
-            }
-            catch (\Exception) {
+            } catch (\Exception) {
 
-            }
-            catch (\Error $e) {
+            } catch (\Error $e) {
                 throw new InvalidTypeException(
                     $type,
                     $schema,
