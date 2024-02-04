@@ -16,17 +16,40 @@ use Pkit\Validator\Exceptions\ValidationException;
 
 final class Validator
 {
-    public function __construct(private mixed $schema, private bool $isThrowable = false)
+    private mixed $result = [];
+    public function __construct(private mixed $schema)
     {
         $this->schema = $schema;
-        $this->isThrowable = $isThrowable;
     }
 
     public function validate(mixed $value)
     {
         if (is_array($this->schema))
-            return $this->handleValidate($value, [], $this->schema);
-        return $this->validateValueOrType($value, [], $this->schema);
+            $this->handleValidate($value, [], $this->schema);
+        else
+            $this->validateValueOrType($value, [], $this->schema);
+        return $this->result;
+    }
+
+    private function set_value_in_result(array $levels, mixed $value)
+    {
+        if (empty($levels))
+            $this->result = $value;
+        else {
+            $this->result = $this->set_value_in_level($levels, is_null($this->result) ? [] : $this->result, $value);
+        }
+    }
+
+    private function set_value_in_level(array $levels, array $result, mixed $value): array
+    {
+        $first_level = array_shift($levels);
+
+        if (empty($levels)) {
+            $result[$first_level] = $value;
+        } else {
+            $result[$first_level] = $this->set_value_in_level($levels, is_null($result[$first_level]) ? [] : $result[$first_level], $value);
+        }
+        return $result;
     }
 
     private function handleValidate(mixed $test, array $level, array $schema)
@@ -82,24 +105,18 @@ final class Validator
             if ($especialSchema == "@array") {
 
                 if ($usedArraySchema)
-                    if ($this->isThrowable)
-                        throw new CountKeysInvalidException(
-                            $schema,
-                            $level,
-                            $test
-                        );
-                    else
-                        return false;
+                    throw new CountKeysInvalidException(
+                        $schema,
+                        $level,
+                        $test
+                    );
 
                 if (!is_array($test))
-                    if ($this->isThrowable)
-                        throw new CountKeysInvalidException(
-                            $schema,
-                            $level,
-                            $test
-                        );
-                    else
-                        return false;
+                    throw new CountKeysInvalidException(
+                        $schema,
+                        $level,
+                        $test
+                    );
 
                 foreach ($test as $key => $value) {
                     if (!is_integer($key)) {
@@ -117,6 +134,7 @@ final class Validator
                 $usedArraySchema = true;
             }
         }
+        $this->set_value_in_result($level, $test);
         return true;
     }
 
@@ -128,65 +146,56 @@ final class Validator
                 if (is_array($subSchema)) {
                     $result = $this->handleValidate($test, $level, $subSchema);
 
-                    if ($result)
+                    if ($result) {
+                        $this->set_value_in_result($level, $test);
                         return true;
+                    }
                     continue;
                 }
 
 
-                if ($this->validateValueOrType($test, $level, $subSchema))
+                if ($this->validateValueOrType($test, $level, $subSchema)) {
+                    $this->set_value_in_result($level, $test);
                     return true;
+                }
             } catch (ValidationException $th) {
-                if ($this->isThrowable)
-                    $errors[] = $th->getMessage();
+                $errors[] = $th->getMessage();
                 $result = false;
             }
         }
 
-        if ($this->isThrowable)
-            throw new MultiInvalidationException(
-                $schema,
-                $level,
-                $test,
-                $errors
-            );
-        else
-            return false;
+        throw new MultiInvalidationException(
+            $schema,
+            $level,
+            $test,
+            $errors
+        );
     }
 
     private function validateKeysAndValues(mixed $test, array $level, array $schema)
     {
         if (!is_array($test))
-            if ($this->isThrowable)
-                throw new NonArrayValueException(
-                    $schema,
-                    $level,
-                    $test
-                );
-            else
-                return false;
+            throw new NonArrayValueException(
+                $schema,
+                $level,
+                $test
+            );
 
         if (count($test) !== count($schema))
-            if ($this->isThrowable)
-                throw new CountKeysInvalidException(
-                    $schema,
-                    $level,
-                    $test
-                );
-            else
-                return false;
+            throw new CountKeysInvalidException(
+                $schema,
+                $level,
+                $test
+            );
 
         foreach ($schema as $keySubSchema => $subSchema) {
             if (!key_exists($keySubSchema, $test)) {
-                if ($this->isThrowable)
-                    throw new NotHaveKeyException(
-                        $subSchema,
-                        $level,
-                        $test,
-                        $keySubSchema
-                    );
-                else
-                    return false;
+                throw new NotHaveKeyException(
+                    $subSchema,
+                    $level,
+                    $test,
+                    $keySubSchema
+                );
             }
 
             if (is_array($subSchema)) {
@@ -199,32 +208,37 @@ final class Validator
             if (!$this->validateValueOrType($test[$keySubSchema], [...$level, $keySubSchema], $subSchema))
                 return false;
         }
+        $this->set_value_in_result($level, $test);
         return true;
     }
 
     public function validateValueOrType(mixed $test, array $level, mixed $subSchema)
     {
         if (!is_string($subSchema)) {
-            if ($subSchema === $test)
+            if ($subSchema === $test) {
+                $this->set_value_in_result($level, $test);
                 return true;
+            }
         } else {
             if (substr($subSchema, 0, 1) == ":") {
-                if (substr($subSchema, 1) == $test)
+                if (substr($subSchema, 1) == $test) {
+                    $this->set_value_in_result($level, $test);
                     return true;
+                }
             } else {
-                if ($this->validType($subSchema, $level, $test))
+                if ($this->validType($subSchema, $level, $test)) {
+                    $this->set_value_in_result($level, $test);
                     return true;
+                }
             }
         }
 
-        if ($this->isThrowable)
-            throw new InvalidValueOrTypeException(
-                $subSchema,
-                $level,
-                $test
-            );
-        else
-            return false;
+        throw new InvalidValueOrTypeException(
+            $subSchema,
+            $level,
+            $test
+        );
+
     }
 
     public function validType(string $schema, array $level, mixed $value)
